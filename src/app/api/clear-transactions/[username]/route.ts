@@ -35,9 +35,7 @@ export async function DELETE(request: Request, context: { params: Promise<{ user
                 headers: { "Content-Type": "application/json" }
             });
         }
-        user.transactionsCID.forEach((transactionsCID) => {
-            (transactionsCID as any) = [];
-        });
+        user.transactionsCID = [];
         await user.save();
         return new Response(JSON.stringify({ success: true, message: "Transactions deleted successfully" }), {
             status: 200,
