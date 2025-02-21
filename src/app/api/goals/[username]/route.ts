@@ -3,6 +3,7 @@ import dbConnect from "@/lib/dbConnect";
 import UserModel from "@/models/User";
 import { IGoal } from "@/models/Goals";
 import { getServerSession } from "next-auth";
+import { pinata } from "@/utils/pinataConfig";
 
 export async function GET(request: Request, context: { params: Promise<{ username: string }> }) {
     const { username } = await context.params;
@@ -37,7 +38,18 @@ export async function GET(request: Request, context: { params: Promise<{ usernam
             });
         }
 
-        return new Response(JSON.stringify({ success: true, goals: user.goals }), {
+        if (!user.goalsCID || user.goalsCID.length === 0) {
+            return new Response(JSON.stringify({ success: true, goals: [] }), {
+                status: 200,
+                headers: { "Content-Type": "application/json" }
+            });
+        }
+
+        const cid = user.goalsCID[user.goalsCID.length - 1];
+        const { data } = await pinata.gateways.get(`${cid}`);
+        const goalsData = JSON.parse(data as string) as IGoal[];
+
+        return new Response(JSON.stringify({ success: true, goals: goalsData }), {
             status: 200,
             headers: { "Content-Type": "application/json" }
         });
@@ -114,8 +126,15 @@ export async function POST(request: Request, context: { params: Promise<{ userna
             });
         }
 
+        let currentGoals: IGoal[] = [];
+        if (user.goalsCID.length > 0) {
+            const currentCid = user.goalsCID[user.goalsCID.length - 1];
+            const { data } = await pinata.gateways.get(`${currentCid}`);
+            currentGoals = JSON.parse(data as string) as IGoal[];
+        }
+
         // Check if goal with same title already exists
-        if (user.goals.some((goal: IGoal) => goal.goalTitle === newGoal.goalTitle)) {
+        if (currentGoals.some((goal: IGoal) => goal.goalTitle === newGoal.goalTitle)) {
             return new Response(JSON.stringify({ 
                 success: false, 
                 error: "A goal with this title already exists" 
@@ -131,13 +150,22 @@ export async function POST(request: Request, context: { params: Promise<{ userna
             remaining: newGoal.remaining
         };
 
-        user.goals.push(goalToSave);
+        currentGoals.push(goalToSave);
+
+        // Upload updated goals to IPFS
+        const goalsBlob = new Blob([JSON.stringify(currentGoals)], { type: 'application/json' });
+        const goalsFile = new File([goalsBlob], 'goals.json', { type: 'application/json' });
+        const goalsUpload = await pinata.upload.file(goalsFile);
+
+        // Save CID to user
+        user.goalsCID.push(goalsUpload.cid);
         await user.save();
 
         return new Response(JSON.stringify({ 
             success: true, 
             message: "Goal created",
-            goal: goalToSave
+            goal: goalToSave,
+            goals: currentGoals
         }), {
             status: 200,
             headers: { "Content-Type": "application/json" }
@@ -192,7 +220,14 @@ export async function DELETE(request: Request, context: { params: Promise<{ user
             });
         }
 
-        const goalIndex = user.goals.findIndex((goal: IGoal) => goal.goalTitle === goalTitle);
+        let currentGoals: IGoal[] = [];
+        if (user.goalsCID.length > 0) {
+            const currentCid = user.goalsCID[user.goalsCID.length - 1];
+            const { data } = await pinata.gateways.get(`${currentCid}`);
+            currentGoals = JSON.parse(data as string) as IGoal[];
+        }
+
+        const goalIndex = currentGoals.findIndex((goal: IGoal) => goal.goalTitle === goalTitle);
         if (goalIndex === -1) {
             return new Response(JSON.stringify({ success: false, error: "Goal not found" }), {
                 status: 404,
@@ -200,7 +235,15 @@ export async function DELETE(request: Request, context: { params: Promise<{ user
             });
         }
 
-        user.goals.splice(goalIndex, 1);
+        currentGoals.splice(goalIndex, 1);
+
+        // Upload updated goals to IPFS
+        const goalsBlob = new Blob([JSON.stringify(currentGoals)], { type: 'application/json' });
+        const goalsFile = new File([goalsBlob], 'goals.json', { type: 'application/json' });
+        const goalsUpload = await pinata.upload.file(goalsFile);
+
+        // Save CID to user
+        user.goalsCID.push(goalsUpload.cid);
         await user.save();
 
         return new Response(JSON.stringify({ 
@@ -284,7 +327,14 @@ export async function PATCH(request: Request, context: { params: Promise<{ usern
             });
         }
 
-        const goalIndex = user.goals.findIndex((goal: IGoal) => goal.goalTitle === updatedGoal.goalTitle);
+        let currentGoals: IGoal[] = [];
+        if (user.goalsCID.length > 0) {
+            const currentCid = user.goalsCID[user.goalsCID.length - 1];
+            const { data } = await pinata.gateways.get(`${currentCid}`);
+            currentGoals = JSON.parse(data as string) as IGoal[];
+        }
+
+        const goalIndex = currentGoals.findIndex((goal: IGoal) => goal.goalTitle === updatedGoal.goalTitle);
         if (goalIndex === -1) {
             return new Response(JSON.stringify({ success: false, error: "Goal not found" }), {
                 status: 404,
@@ -298,13 +348,22 @@ export async function PATCH(request: Request, context: { params: Promise<{ usern
             remaining: updatedGoal.remaining
         };
 
-        user.goals[goalIndex] = goalToSave;
+        currentGoals[goalIndex] = goalToSave;
+
+        // Upload updated goals to IPFS
+        const goalsBlob = new Blob([JSON.stringify(currentGoals)], { type: 'application/json' });
+        const goalsFile = new File([goalsBlob], 'goals.json', { type: 'application/json' });
+        const goalsUpload = await pinata.upload.file(goalsFile);
+
+        // Save CID to user
+        user.goalsCID.push(goalsUpload.cid);
         await user.save();
 
         return new Response(JSON.stringify({ 
             success: true, 
             message: "Goal updated successfully",
-            goal: goalToSave
+            goal: goalToSave,
+            goals: currentGoals
         }), { 
             status: 200,
             headers: { "Content-Type": "application/json" }
