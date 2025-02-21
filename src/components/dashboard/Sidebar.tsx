@@ -7,7 +7,7 @@ const menuItems = [
   { icon: PiggyBank, label: "Budget Planner", href: "/dashboard/budget-planner" },
   { icon: TrendingUp, label: "Stocks", href: "/dashboard/stocks" },
   { icon: LineChart, label: "Mutual Funds", href: "/dashboard/mutual-funds" },
-  { icon: Bitcoin, label: "Crypto Prices", href: "/dashboard/crypto" },
+  { icon: Bitcoin, label: "Crypto Wallet", href: "/dashboard/crypto" },
   { icon: Home, label: "Goals", href: "/dashboard/goals" },
   { icon: Calculator, label: "FD Planner", href: "/dashboard/planner" },
 ]

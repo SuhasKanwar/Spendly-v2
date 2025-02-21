@@ -2,6 +2,12 @@
 import { useEffect, useState } from 'react';
 import { CryptoIcon } from '@/components/ui/CryptoIcon';
 
+declare global {
+  interface Window {
+    ethereum?: any;
+  }
+}
+
 interface CryptoData {
   [key: string]: {
     usd: number;
@@ -24,6 +30,75 @@ const cryptoNames: { [key: string]: string } = {
 
 export default function CryptoPage() {
   const [cryptoData, setCryptoData] = useState<CryptoData | null>(null);
+  const [account, setAccount] = useState("");
+  const [balance, setBalance] = useState("");
+
+const disconnectMetamask = async () => {
+    setAccount("");
+    setBalance("");
+
+    if (window.ethereum) {
+      try {
+        // This requests updated permissions. The user can revoke "eth_accounts" permission in MetaMask if they wish.
+        // Note: There's no direct way for a dApp to forcibly log out of MetaMask, as the user controls permissions.
+        await window.ethereum.request({
+          method: 'wallet_requestPermissions',
+          params: [
+            {
+              eth_accounts: {}
+            }
+          ]
+        });
+      } catch (error) {
+        console.error(error);
+      }
+    }
+  };
+
+  const connectMetamask = async () => {
+    if (!window.ethereum) {
+      alert("Please install MetaMask!");
+      return;
+    }
+    try {
+      const accounts = await window.ethereum.request({
+        method: "eth_requestAccounts",
+      });
+      if (accounts.length > 0) {
+        setAccount(accounts[0]);
+        const bal = await window.ethereum.request({
+          method: "eth_getBalance",
+          params: [accounts[0], "latest"],
+        });
+        const ethBalance = parseInt(bal, 16) / 1e18;
+        setBalance(ethBalance.toFixed(4));
+      }
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
+  useEffect(() => {
+    const checkWalletConnection = async () => {
+      if (window.ethereum) {
+        try {
+          const accounts = await window.ethereum.request({ method: 'eth_accounts' });
+          if (accounts.length > 0) {
+            setAccount(accounts[0]);
+            const bal = await window.ethereum.request({
+              method: 'eth_getBalance',
+              params: [accounts[0], 'latest'],
+            });
+            const ethBalance = parseInt(bal, 16) / 1e18;
+            setBalance(ethBalance.toFixed(4));
+          }
+        } catch (error) {
+          console.error(error);
+        }
+      }
+    };
+    checkWalletConnection();
+  }, []);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -37,30 +112,68 @@ export default function CryptoPage() {
     return () => clearInterval(interval);
   }, []);
 
-  if (!cryptoData) return <div>Loading...</div>;
-
   return (
     <div className="p-6 mt-10">
-      <h1 className="text-2xl font-bold mb-6">Cryptocurrency Prices</h1>
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {Object.entries(cryptoData).map(([crypto, data]) => {
-          if (!data?.usd) return null; // Skip if data is invalid
-          return (
-            <div key={crypto} className="bg-white p-4 rounded-lg shadow">
-              <div className="flex items-center gap-2">
-                <CryptoIcon symbol={crypto} />
-                <h2 className="text-xl font-semibold capitalize">{cryptoNames[crypto] || crypto}</h2>
-              </div>
-              <div className="mt-2">
-                <p className="text-2xl font-bold">${data.usd.toFixed(2)}</p>
-                <p className={`text-sm ${data.usd_24h_change > 0 ? 'text-green-500' : 'text-red-500'}`}>
-                  {data.usd_24h_change?.toFixed(2) || '0.00'}% (24h)
-                </p>
-              </div>
+      <div className="bg-white rounded-lg shadow-lg p-6 mb-8">
+        <h3 className="text-lg font-semibold mb-2">Wallet Details</h3>
+        {account ? (
+          <div className="flex flex-col md:flex-row items-center justify-between">
+            <div>
+              <p className="text-gray-600">
+                <span className="font-medium">Address:</span>{' '}
+                {`${account.slice(0,6)}...${account.slice(-4)}`}
+              </p>
+              <p className="text-gray-600 mt-1">
+                <span className="font-medium">Balance:</span> {balance} ETH
+              </p>
             </div>
-          );
-        })}
+            <div className="mt-4 md:mt-0">
+              <button 
+                onClick={disconnectMetamask}
+                className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition-colors"
+              >
+                Disconnect Wallet
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="flex flex-col items-center">
+            <p className="text-gray-600 mb-4">No wallet connected</p>
+            <button 
+              onClick={connectMetamask}
+              className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors"
+            >
+              Connect MetaMask
+            </button>
+          </div>
+        )}
       </div>
+      <h1 className="text-2xl font-bold mb-6">Cryptocurrency Prices</h1>
+      {!cryptoData ? (
+        <div>Loading cryptocurrency prices...</div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {Object.entries(cryptoData).map(([crypto, data]) => {
+            if (!data?.usd) return null; // Skip if data is invalid
+            return (
+              <div key={crypto} className="bg-white p-4 rounded-lg shadow">
+                <div className="flex items-center gap-2">
+                  <CryptoIcon symbol={crypto} />
+                  <h2 className="text-xl font-semibold capitalize">
+                    {cryptoNames[crypto] || crypto}
+                  </h2>
+                </div>
+                <div className="mt-2">
+                  <p className="text-2xl font-bold">${data.usd.toFixed(2)}</p>
+                  <p className={`text-sm ${data.usd_24h_change > 0 ? 'text-green-500' : 'text-red-500'}`}>
+                    {data.usd_24h_change?.toFixed(2) || '0.00'}% (24h)
+                  </p>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
