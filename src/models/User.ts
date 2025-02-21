@@ -1,6 +1,4 @@
 import mongoose, { Schema, Document } from "mongoose";
-import BankSchema from "./Banks";
-import GoalsSchema, { IGoal } from "./Goals";
 
 export interface User extends Document {
     username: string;
@@ -9,9 +7,6 @@ export interface User extends Document {
     otp: string;
     otpExpiry: Date;
     isVerified: boolean;
-    banksCount: number;
-    banks: [typeof BankSchema];
-    goals: IGoal[];
 }
 
 const UserSchema: Schema<User> = new Schema({
@@ -43,18 +38,6 @@ const UserSchema: Schema<User> = new Schema({
     isVerified: {
         type: Boolean,
         default: false
-    },
-    banksCount: {
-        type: Number,
-        default: 0
-    },
-    banks: {
-        type: [BankSchema],
-        default: []
-    },
-    goals: {
-        type: [GoalsSchema],
-        default: []
     }
 });
 
