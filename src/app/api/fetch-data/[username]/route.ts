@@ -2,6 +2,7 @@ import dbConnect from "@/lib/dbConnect";
 import UserModel from "@/models/User";
 import { getServerSession } from "next-auth";
 import { authOptions } from "../../auth/[...nextauth]/options";
+import { pinata } from "@/utils/pinataConfig";
 
 export async function GET(request: Request, context: { params: Promise<{ username: string }> }) {
   const { username } = await context.params;
@@ -36,7 +37,23 @@ export async function GET(request: Request, context: { params: Promise<{ usernam
         headers: { "Content-Type": "application/json" }
       });
     }
-    return new Response(JSON.stringify({ success: true, data: user }), {
+    
+    if (!user.transactionsCID || user.transactionsCID.length === 0) {
+      return new Response(JSON.stringify({ success: false, error: "No transaction data available" }), {
+        status: 404,
+        headers: { "Content-Type": "application/json" }
+      });
+    }
+    
+    const cid = user.transactionsCID[0];
+    const transactionsGatewayUrl = await pinata.gateways.createSignedURL({
+      cid,
+      expires: 3600 * 24
+    });
+    const fileResponse = await fetch(transactionsGatewayUrl);
+    const transactionData = await fileResponse.json();
+
+    return new Response(JSON.stringify({ success: true, data: transactionData }), {
       status: 200,
       headers: { "Content-Type": "application/json" }
     });

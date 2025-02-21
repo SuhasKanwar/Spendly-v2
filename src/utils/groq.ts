@@ -35,9 +35,7 @@ export async function callGroq(prompt: string): Promise<string | null> {
       .replace(/```/g, '')
       .trim();
 
-    // Try to extract JSON content
     try {
-      // Look for JSON array or object pattern
       const jsonMatch = cleanedContent.match(/(\{[\s\S]*\}|\[[\s\S]*\])/);
       if (jsonMatch) {
         // Validate if it's proper JSON

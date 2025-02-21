@@ -31,20 +31,20 @@ export async function POST(request: NextRequest) {
 
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
-    
+
     let parsedData;
     let transactionsUpload;
     let transactionsGatewayUrl;
 
     try {
       let pdfReaderOptions = {};
-      
+
       if (pdfPassword && pdfPassword.trim() !== '') {
         pdfReaderOptions = { password: pdfPassword };
       }
 
       const extractedText: string[] = [];
-      
+
       await new Promise((resolve, reject) => {
         new PdfReader(pdfReaderOptions).parseBuffer(
           buffer,
@@ -62,7 +62,7 @@ export async function POST(request: NextRequest) {
 
       let currentLine = '';
       const lines = [];
-      
+
       extractedText.forEach(text => {
         if (text.endsWith('-') || text.endsWith(' ')) {
           currentLine += text;
@@ -76,8 +76,8 @@ export async function POST(request: NextRequest) {
         lines.push(currentLine);
       }
 
-      const transactionStartIndex = lines.findIndex(line => 
-        line.toLowerCase().includes('date') || 
+      const transactionStartIndex = lines.findIndex(line =>
+        line.toLowerCase().includes('date') ||
         line.toLowerCase().includes('transaction') ||
         line.toLowerCase().includes('description') ||
         (line.toLowerCase().includes('debit') && line.toLowerCase().includes('credit'))
@@ -93,7 +93,7 @@ export async function POST(request: NextRequest) {
       const actualTransactions = transactions.slice(1);
       const quarterLength = Math.floor(actualTransactions.length / 4);
       const reducedTransactions = [transactionHeader, ...actualTransactions.slice(0, quarterLength)];
-      
+
       const reducedText = header + '\n\n' + reducedTransactions.join('\n');
 
       const prompt = `
@@ -152,21 +152,32 @@ export async function POST(request: NextRequest) {
       if (!response) {
         throw new Error('Failed to process statement with Groq');
       }
-      
+
       const jsonMatch = response.match(/{[\s\S]*}/);
       if (!jsonMatch) {
         console.error('No JSON object found in response');
         throw new Error('No JSON found in Groq response');
       }
-      
+
+      let rawJson = jsonMatch[0].trim();
+
+      rawJson = rawJson.replace(/"balance":\s*([\d.]+\s*[-+]\s*[\d.]+)/g, (match, expression) => {
+        try {
+          return `"balance": ${eval(expression)}`; // Evaluate the arithmetic expression safely
+        } catch (e) {
+          console.error('Invalid balance expression:', expression);
+          throw new Error('Invalid balance expression in Groq response');
+        }
+      });
+
+      let parsedData;
       try {
-        parsedData = JSON.parse(jsonMatch[0].trim());
+        parsedData = JSON.parse(rawJson);
       } catch (e) {
-        console.error('Failed to parse Groq JSON response:', e);
-        console.error('Attempted to parse:', jsonMatch[0]);
+        console.error('Failed to parse JSON:', e);
         throw new Error('Invalid JSON response from Groq');
       }
-
+      
       if (!parsedData || !parsedData.email) {
         throw new Error('Missing required fields in parsed data');
       }
@@ -174,7 +185,7 @@ export async function POST(request: NextRequest) {
       const transactionData = JSON.stringify(parsedData);
       const transactionBlob = new Blob([transactionData], { type: 'application/json' });
       const transactionFile = new File([transactionBlob], 'transactions.json', { type: 'application/json' });
-      
+
       transactionsUpload = await pinata.upload.file(transactionFile);
       transactionsGatewayUrl = await pinata.gateways.createSignedURL({
         cid: transactionsUpload.cid,
