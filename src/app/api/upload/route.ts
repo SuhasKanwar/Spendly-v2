@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from "next-auth";
 import { authOptions } from "../auth/[...nextauth]/options";
-import { writeFile } from 'fs/promises';
-import path from 'path';
+import { pinata } from '@/utils/pinataConfig';
 import { PdfReader } from "pdfreader";
 import { callGroq } from '@/utils/groq';
 import dbConnect from '@/lib/dbConnect';
@@ -32,14 +31,11 @@ export async function POST(request: NextRequest) {
 
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
-
-    const uploadDir = path.join(process.cwd(), 'public', 'uploads');
-
-    const fileName = "uploaded_pdf.pdf";
-    const filePath = path.join(uploadDir, fileName);
-    await writeFile(filePath, buffer);
-
+    
     let parsedData;
+    let transactionsUpload;
+    let transactionsGatewayUrl;
+
     try {
       let pdfReaderOptions = {};
       
@@ -50,8 +46,8 @@ export async function POST(request: NextRequest) {
       const extractedText: string[] = [];
       
       await new Promise((resolve, reject) => {
-        new PdfReader(pdfReaderOptions).parseFileItems(
-          filePath,
+        new PdfReader(pdfReaderOptions).parseBuffer(
+          buffer,
           function (err, item) {
             if (err) reject(err);
             else if (!item) {
@@ -146,6 +142,8 @@ export async function POST(request: NextRequest) {
            - If debit, subtract the amount from previous balance
         3. Store the actual calculated number, not a formula
 
+        Strictly stick to the structure and provide the complete JSON
+
         Here is the bank statement text to parse:
         ${reducedText}
       `;
@@ -154,8 +152,6 @@ export async function POST(request: NextRequest) {
       if (!response) {
         throw new Error('Failed to process statement with Groq');
       }
-
-      // const thinkMatch = response.match(/<think>(.*?)<\/think>/s);
       
       const jsonMatch = response.match(/{[\s\S]*}/);
       if (!jsonMatch) {
@@ -164,16 +160,26 @@ export async function POST(request: NextRequest) {
       }
       
       try {
-        parsedData = JSON.parse(jsonMatch[0]);
+        parsedData = JSON.parse(jsonMatch[0].trim());
       } catch (e) {
         console.error('Failed to parse Groq JSON response:', e);
         console.error('Attempted to parse:', jsonMatch[0]);
         throw new Error('Invalid JSON response from Groq');
       }
 
-      if (!parsedData.username || !parsedData.email || !parsedData.banks?.length) {
+      if (!parsedData || !parsedData.email) {
         throw new Error('Missing required fields in parsed data');
       }
+
+      const transactionData = JSON.stringify(parsedData);
+      const transactionBlob = new Blob([transactionData], { type: 'application/json' });
+      const transactionFile = new File([transactionBlob], 'transactions.json', { type: 'application/json' });
+      
+      transactionsUpload = await pinata.upload.file(transactionFile);
+      transactionsGatewayUrl = await pinata.gateways.createSignedURL({
+        cid: transactionsUpload.cid,
+        expires: 3600 * 24
+      });
 
       await dbConnect();
 
@@ -182,9 +188,9 @@ export async function POST(request: NextRequest) {
         throw new Error('User not found');
       }
 
-      user.banks.push(...parsedData.banks);
-      user.banksCount = user.banks.length;
+      user.transactionsCID.push(transactionsUpload.cid);
       await user.save();
+
     } catch (error) {
       console.error('Error processing PDF:', error);
       throw error;
@@ -192,9 +198,9 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      path: `/uploads/${fileName}`,
-      message: 'Statement processed and saved successfully',
-      data: parsedData
+      transactionsUrl: transactionsGatewayUrl,
+      transactionsCid: transactionsUpload?.cid,
+      message: 'Statement processed and saved successfully'
     });
   } catch (error) {
     console.error('Upload error:', error);

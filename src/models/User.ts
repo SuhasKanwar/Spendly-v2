@@ -7,6 +7,7 @@ export interface User extends Document {
     otp: string;
     otpExpiry: Date;
     isVerified: boolean;
+    transactionsCID: string[];
 }
 
 const UserSchema: Schema<User> = new Schema({
@@ -38,6 +39,10 @@ const UserSchema: Schema<User> = new Schema({
     isVerified: {
         type: Boolean,
         default: false
+    },
+    transactionsCID: {
+        type: [String],
+        default: []
     }
 });
 
