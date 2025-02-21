@@ -45,19 +45,51 @@ export async function GET(request: Request, context: { params: Promise<{ usernam
             });
         }
 
-        const cid = user.goalsCID[user.goalsCID.length - 1];
-        const { data } = await pinata.gateways.get(`${cid}`);
-        const goalsData = JSON.parse(data as string) as IGoal[];
+        try {
+            const cid = user.goalsCID[user.goalsCID.length - 1];
+            const { data } = await pinata.gateways.get(`${cid}`);
+            
+            if (!data) {
+                console.error('No data received from IPFS for CID:', cid);
+                return Response.json({ success: true, goals: [] }, { status: 200 });
+            }
 
-        return new Response(JSON.stringify({ success: true, goals: goalsData }), {
-            status: 200,
-            headers: { "Content-Type": "application/json" }
-        });
+            // Handle the data based on its type
+            let goalsData: IGoal[];
+            if (typeof data === 'string') {
+                try {
+                    goalsData = JSON.parse(data);
+                } catch (parseError) {
+                    console.error('Failed to parse string data:', parseError);
+                    return Response.json({ success: true, goals: [] }, { status: 200 });
+                }
+            } else if (Array.isArray(data)) {
+                goalsData = data;
+            } else if (typeof data === 'object' && data !== null) {
+                // If data is an object with a goals property
+                goalsData = (data as any).goals || [];
+            } else {
+                console.error('Unexpected data format:', data);
+                return Response.json({ success: true, goals: [] }, { status: 200 });
+            }
+
+            return Response.json({ success: true, goals: goalsData }, { status: 200 });
+
+        } catch (ipfsError: any) {
+            console.error('IPFS Error:', ipfsError);
+            return Response.json({ 
+                success: false, 
+                error: 'Failed to fetch goals from IPFS',
+                details: ipfsError.message 
+            }, { status: 500 });
+        }
     } catch (error: any) {
-        return new Response(JSON.stringify({ success: false, error: error.message }), {
-            status: 500,
-            headers: { "Content-Type": "application/json" }
-        });
+        console.error('Goals API Error:', error);
+        return Response.json({ 
+            success: false, 
+            error: error.message,
+            details: error.stack
+        }, { status: 500 });
     }
 }
 
@@ -128,20 +160,39 @@ export async function POST(request: Request, context: { params: Promise<{ userna
 
         let currentGoals: IGoal[] = [];
         if (user.goalsCID.length > 0) {
-            const currentCid = user.goalsCID[user.goalsCID.length - 1];
-            const { data } = await pinata.gateways.get(`${currentCid}`);
-            currentGoals = JSON.parse(data as string) as IGoal[];
+            try {
+                const currentCid = user.goalsCID[user.goalsCID.length - 1];
+                const { data } = await pinata.gateways.get(`${currentCid}`);
+                
+                if (!data) {
+                    throw new Error('No data received from IPFS');
+                }
+
+                // Handle the data based on its type
+                if (typeof data === 'string') {
+                    try {
+                        currentGoals = JSON.parse(data);
+                    } catch (parseError) {
+                        console.error('Failed to parse string data:', parseError);
+                        currentGoals = [];
+                    }
+                } else if (Array.isArray(data)) {
+                    currentGoals = data;
+                } else if (typeof data === 'object' && data !== null) {
+                    currentGoals = (data as any).goals || [];
+                }
+            } catch (ipfsError: any) {
+                console.error('Error fetching existing goals:', ipfsError);
+                // Continue with empty goals array if fetch fails
+            }
         }
 
         // Check if goal with same title already exists
-        if (currentGoals.some((goal: IGoal) => goal.goalTitle === newGoal.goalTitle)) {
-            return new Response(JSON.stringify({ 
+        if (currentGoals.some(goal => goal.goalTitle === newGoal.goalTitle)) {
+            return Response.json({ 
                 success: false, 
                 error: "A goal with this title already exists" 
-            }), {
-                status: 400,
-                headers: { "Content-Type": "application/json" }
-            });
+            }, { status: 400 });
         }
 
         const goalToSave: IGoal = {
@@ -152,30 +203,42 @@ export async function POST(request: Request, context: { params: Promise<{ userna
 
         currentGoals.push(goalToSave);
 
-        // Upload updated goals to IPFS
-        const goalsBlob = new Blob([JSON.stringify(currentGoals)], { type: 'application/json' });
-        const goalsFile = new File([goalsBlob], 'goals.json', { type: 'application/json' });
-        const goalsUpload = await pinata.upload.file(goalsFile);
+        try {
+            const goalsData = JSON.stringify(currentGoals);
+            const goalsFile = new File([goalsData], 'goals.json', { type: 'application/json' });
+            const goalsUpload = await pinata.upload.file(goalsFile);
 
-        // Save CID to user
-        user.goalsCID.push(goalsUpload.cid);
-        await user.save();
+            if (!goalsUpload?.cid) {
+                throw new Error('Failed to get CID from IPFS upload');
+            }
 
-        return new Response(JSON.stringify({ 
-            success: true, 
-            message: "Goal created",
-            goal: goalToSave,
-            goals: currentGoals
-        }), {
-            status: 200,
-            headers: { "Content-Type": "application/json" }
-        });
+            user.goalsCID.push(goalsUpload.cid);
+            await user.save();
+
+            return Response.json({ 
+                success: true, 
+                message: "Goal created",
+                goal: goalToSave,
+                goals: currentGoals,
+                cid: goalsUpload.cid
+            }, { status: 200 });
+
+        } catch (ipfsError: any) {
+            console.error('IPFS Upload Error:', ipfsError);
+            return Response.json({ 
+                success: false, 
+                error: 'Failed to upload to IPFS',
+                details: ipfsError.message 
+            }, { status: 500 });
+        }
 
     } catch (error: any) {
-        return new Response(JSON.stringify({ success: false, error: error.message }), {
-            status: 500,
-            headers: { "Content-Type": "application/json" }
-        });
+        console.error('Goals API Error:', error);
+        return Response.json({ 
+            success: false, 
+            error: error.message,
+            details: error.stack
+        }, { status: 500 });
     }
 }
 
@@ -214,51 +277,87 @@ export async function DELETE(request: Request, context: { params: Promise<{ user
     try {
         const user = await UserModel.findOne({ username });
         if (!user) {
-            return new Response(JSON.stringify({ success: false, error: "User not found" }), {
-                status: 404,
-                headers: { "Content-Type": "application/json" }
-            });
+            return Response.json({ success: false, error: "User not found" }, { status: 404 });
         }
 
         let currentGoals: IGoal[] = [];
         if (user.goalsCID.length > 0) {
-            const currentCid = user.goalsCID[user.goalsCID.length - 1];
-            const { data } = await pinata.gateways.get(`${currentCid}`);
-            currentGoals = JSON.parse(data as string) as IGoal[];
+            try {
+                const currentCid = user.goalsCID[user.goalsCID.length - 1];
+                const { data } = await pinata.gateways.get(`${currentCid}`);
+                
+                if (!data) {
+                    throw new Error('No data received from IPFS');
+                }
+
+                // Handle the data based on its type
+                if (typeof data === 'string') {
+                    try {
+                        currentGoals = JSON.parse(data);
+                    } catch (parseError) {
+                        console.error('Failed to parse string data:', parseError);
+                        throw new Error('Invalid goals data format');
+                    }
+                } else if (Array.isArray(data)) {
+                    currentGoals = data;
+                } else if (typeof data === 'object' && data !== null) {
+                    currentGoals = (data as any).goals || [];
+                } else {
+                    throw new Error('Unexpected data format from IPFS');
+                }
+            } catch (ipfsError: any) {
+                console.error('Error fetching existing goals:', ipfsError);
+                return Response.json({ 
+                    success: false, 
+                    error: 'Failed to fetch goals',
+                    details: ipfsError.message 
+                }, { status: 500 });
+            }
         }
 
         const goalIndex = currentGoals.findIndex((goal: IGoal) => goal.goalTitle === goalTitle);
         if (goalIndex === -1) {
-            return new Response(JSON.stringify({ success: false, error: "Goal not found" }), {
-                status: 404,
-                headers: { "Content-Type": "application/json" }
-            });
+            return Response.json({ success: false, error: "Goal not found" }, { status: 404 });
         }
 
         currentGoals.splice(goalIndex, 1);
 
-        // Upload updated goals to IPFS
-        const goalsBlob = new Blob([JSON.stringify(currentGoals)], { type: 'application/json' });
-        const goalsFile = new File([goalsBlob], 'goals.json', { type: 'application/json' });
-        const goalsUpload = await pinata.upload.file(goalsFile);
+        // Upload to IPFS
+        const goalsData = JSON.stringify(currentGoals);
+        const goalsFile = new File([goalsData], 'goals.json', { type: 'application/json' });
 
-        // Save CID to user
-        user.goalsCID.push(goalsUpload.cid);
-        await user.save();
+        try {
+            const goalsUpload = await pinata.upload.file(goalsFile);
+            if (!goalsUpload?.cid) {
+                throw new Error('Failed to get CID from IPFS upload');
+            }
 
-        return new Response(JSON.stringify({ 
-            success: true, 
-            message: "Goal removed successfully" 
-        }), { 
-            status: 200,
-            headers: { "Content-Type": "application/json" }
-        });
+            // Save CID to user
+            user.goalsCID.push(goalsUpload.cid);
+            await user.save();
+
+            return Response.json({ 
+                success: true, 
+                message: "Goal removed successfully",
+                cid: goalsUpload.cid
+            }, { status: 200 });
+
+        } catch (ipfsError: any) {
+            console.error('IPFS Upload Error:', ipfsError);
+            return Response.json({ 
+                success: false, 
+                error: 'Failed to upload to IPFS',
+                details: ipfsError.message 
+            }, { status: 500 });
+        }
         
     } catch (error: any) {
-        return new Response(JSON.stringify({ success: false, error: error.message }), {
-            status: 500,
-            headers: { "Content-Type": "application/json" }
-        });
+        console.error('Goals API Error:', error);
+        return Response.json({ 
+            success: false, 
+            error: error.message,
+            details: error.stack
+        }, { status: 500 });
     }
 }
 
@@ -329,50 +428,82 @@ export async function PATCH(request: Request, context: { params: Promise<{ usern
 
         let currentGoals: IGoal[] = [];
         if (user.goalsCID.length > 0) {
-            const currentCid = user.goalsCID[user.goalsCID.length - 1];
-            const { data } = await pinata.gateways.get(`${currentCid}`);
-            currentGoals = JSON.parse(data as string) as IGoal[];
+            try {
+                const currentCid = user.goalsCID[user.goalsCID.length - 1];
+                const { data } = await pinata.gateways.get(`${currentCid}`);
+                
+                if (!data) {
+                    throw new Error('No data received from IPFS');
+                }
+
+                // Handle the data based on its type
+                if (typeof data === 'string') {
+                    try {
+                        currentGoals = JSON.parse(data);
+                    } catch (parseError) {
+                        throw new Error('Invalid goals data format');
+                    }
+                } else if (Array.isArray(data)) {
+                    currentGoals = data;
+                } else if (typeof data === 'object' && data !== null) {
+                    currentGoals = (data as any).goals || [];
+                }
+            } catch (ipfsError: any) {
+                console.error('Error fetching existing goals:', ipfsError);
+                return Response.json({ 
+                    success: false, 
+                    error: 'Failed to fetch goals',
+                    details: ipfsError.message 
+                }, { status: 500 });
+            }
         }
 
-        const goalIndex = currentGoals.findIndex((goal: IGoal) => goal.goalTitle === updatedGoal.goalTitle);
+        const goalIndex = currentGoals.findIndex(goal => goal.goalTitle === updatedGoal.goalTitle);
         if (goalIndex === -1) {
-            return new Response(JSON.stringify({ success: false, error: "Goal not found" }), {
-                status: 404,
-                headers: { "Content-Type": "application/json" }
-            });
+            return Response.json({ success: false, error: "Goal not found" }, { status: 404 });
         }
 
-        const goalToSave: IGoal = {
-            goalTitle: updatedGoal.goalTitle,
-            amount: updatedGoal.amount,
-            remaining: updatedGoal.remaining
+        // Update the existing goal
+        currentGoals[goalIndex] = {
+            ...currentGoals[goalIndex],
+            ...updatedGoal
         };
 
-        currentGoals[goalIndex] = goalToSave;
+        try {
+            const goalsData = JSON.stringify(currentGoals);
+            const goalsFile = new File([goalsData], 'goals.json', { type: 'application/json' });
+            const goalsUpload = await pinata.upload.file(goalsFile);
 
-        // Upload updated goals to IPFS
-        const goalsBlob = new Blob([JSON.stringify(currentGoals)], { type: 'application/json' });
-        const goalsFile = new File([goalsBlob], 'goals.json', { type: 'application/json' });
-        const goalsUpload = await pinata.upload.file(goalsFile);
+            if (!goalsUpload?.cid) {
+                throw new Error('Failed to get CID from IPFS upload');
+            }
 
-        // Save CID to user
-        user.goalsCID.push(goalsUpload.cid);
-        await user.save();
+            user.goalsCID.push(goalsUpload.cid);
+            await user.save();
 
-        return new Response(JSON.stringify({ 
-            success: true, 
-            message: "Goal updated successfully",
-            goal: goalToSave,
-            goals: currentGoals
-        }), { 
-            status: 200,
-            headers: { "Content-Type": "application/json" }
-        });
+            return Response.json({ 
+                success: true, 
+                message: "Goal updated successfully",
+                goal: currentGoals[goalIndex],
+                goals: currentGoals,
+                cid: goalsUpload.cid
+            }, { status: 200 });
+
+        } catch (ipfsError: any) {
+            console.error('IPFS Upload Error:', ipfsError);
+            return Response.json({ 
+                success: false, 
+                error: 'Failed to upload to IPFS',
+                details: ipfsError.message 
+            }, { status: 500 });
+        }
         
     } catch (error: any) {
-        return new Response(JSON.stringify({ success: false, error: error.message }), {
-            status: 500,
-            headers: { "Content-Type": "application/json" }
-        });
+        console.error('Goals API Error:', error);
+        return Response.json({ 
+            success: false, 
+            error: error.message,
+            details: error.stack
+        }, { status: 500 });
     }
 }
