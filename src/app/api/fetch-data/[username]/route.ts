@@ -45,15 +45,10 @@ export async function GET(request: Request, context: { params: Promise<{ usernam
       });
     }
     
-    const cid = user.transactionsCID[0];
-    const transactionsGatewayUrl = await pinata.gateways.createSignedURL({
-      cid,
-      expires: 3600 * 24
-    });
-    const fileResponse = await fetch(transactionsGatewayUrl);
-    const transactionData = await fileResponse.json();
+    const cid = user.transactionsCID[user.transactionsCID.length - 1];
+    const { data, contentType } = await pinata.gateways.get(`${cid}`);
 
-    return new Response(JSON.stringify({ success: true, data: transactionData }), {
+    return new Response(JSON.stringify({ success: true, data: data }), {
       status: 200,
       headers: { "Content-Type": "application/json" }
     });

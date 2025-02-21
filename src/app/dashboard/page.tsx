@@ -65,6 +65,15 @@ const page = () => {
     return () => window.removeEventListener("storage", calculateStats);
   }, []);
 
+  React.useEffect(() => {
+    if (session?.user) {
+      const { username } = session.user as User;
+      fetchUserData(username as string, true) // Force refresh on mount
+        .then(() => window.dispatchEvent(new Event("storage")))
+        .catch(console.error);
+    }
+  }, [session]);
+
   const NoTransactionsMessage = () => (
     <div className="flex flex-col items-center justify-center py-12 px-4">
       <div className="text-center space-y-6">
@@ -118,7 +127,6 @@ const page = () => {
   }
 
   const { username } = session?.user as User;
-  fetchUserData(username as string);
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat("en-IN", {
