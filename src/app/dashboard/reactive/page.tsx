@@ -4,7 +4,7 @@ import { useState } from "react";
 import { ethers, Contract } from "ethers";
 
 // Replace with your deployed contract address
-const CONTRACT_ADDRESS = "0x0000000000000000000000000000000000FFFFFF";
+const CONTRACT_ADDRESS = "0xC538763E67293b1FA6F8E118d5F413F1A9595646";
 
 // Minimal ABI for buy and sell functions
 const ABI = [
