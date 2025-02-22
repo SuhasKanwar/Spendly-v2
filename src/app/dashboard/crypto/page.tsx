@@ -32,8 +32,12 @@ export default function CryptoPage() {
   const [cryptoData, setCryptoData] = useState<CryptoData | null>(null);
   const [account, setAccount] = useState("");
   const [balance, setBalance] = useState("");
+  
+  const [modalOpen, setModalOpen] = useState(false);
+  const [modalLoading, setModalLoading] = useState(false);
+  const [analysisResult, setAnalysisResult] = useState<any>(null);
 
-const disconnectMetamask = async () => {
+  const disconnectMetamask = async () => {
     setAccount("");
     setBalance("");
 
@@ -75,6 +79,21 @@ const disconnectMetamask = async () => {
       }
     } catch (error) {
       console.error(error);
+    }
+  };
+
+  const handleAnalyze = async (crypto: string) => {
+    setModalOpen(true);
+    setModalLoading(true);
+    try {
+      const res = await fetch(`http://127.0.0.1:8000/threshold/${crypto}`);
+      const data = await res.json();
+      setAnalysisResult(data);
+    } catch (error) {
+      console.error(error);
+      setAnalysisResult({ error: 'Failed to fetch analysis.' });
+    } finally {
+      setModalLoading(false);
     }
   };
 
@@ -169,9 +188,45 @@ const disconnectMetamask = async () => {
                     {data.usd_24h_change?.toFixed(2) || '0.00'}% (24h)
                   </p>
                 </div>
+                {/* New Analyze button */}
+                <div className="mt-4">
+                  <button
+                    onClick={() => handleAnalyze(crypto)}
+                    className="bg-indigo-600 text-white px-4 py-2 rounded hover:bg-indigo-700 transition-colors"
+                  >
+                    Analyze
+                  </button>
+                </div>
               </div>
             );
           })}
+        </div>
+      )}
+      {/* Modal */}
+      {modalOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
+          <div className="bg-white p-6 rounded-lg w-11/12 md:w-1/2">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-xl font-semibold">Analysis Result</h2>
+              <button onClick={() => { setModalOpen(false); setAnalysisResult(null); }} className="text-gray-600">&times;</button>
+            </div>
+            {modalLoading ? (
+              <div>Loading...</div>
+            ) : (
+              <div>
+                {analysisResult?.error ? (
+                  <p className="text-red-600">{analysisResult.error}</p>
+                ) : (
+                  <>
+                    <p><strong>Crypto:</strong> {analysisResult.crypto_id}</p>
+                    <p><strong>Threshold:</strong> {analysisResult.threshold}</p>
+                    <p><strong>Explanation:</strong></p>
+                    <p>{analysisResult.explanation}</p>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>
