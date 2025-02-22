@@ -21,6 +21,7 @@ import {
 import SpeechRecognition from "@/components/dashboard/SpeechRecognition";
 import InvestmentChoiceModal from "@/components/InvestmentChoiceModal";
 import { useSession } from "next-auth/react";
+import ConfirmChangesModal, { DiffBudget } from "@/components/dashboard/ConfirmChangesModal";
 
 interface Message {
   text: string;
@@ -442,16 +443,46 @@ export default function BudgetManagement() {
     }
   }, [budgetDistribution]);
 
-  const handleBudgetUpdate = (newBudget: BudgetItem[]) => {
-    const updatedDistribution = newBudget.reduce((acc, item) => {
-      acc[item.category] = {
-        amount: item.amount,
-        percentage: item.percentage,
-      };
-      return acc;
-    }, {} as Record<string, { amount: number; percentage: number }>);
+  const [pendingBudgetDiff, setPendingBudgetDiff] = useState<DiffBudget[] | null>(null);
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
 
-    setBudgetDistribution(updatedDistribution);
+  const handleBudgetUpdate = (newBudget: BudgetItem[]) => {
+    // Calculate diff based on the current budgetDistribution values
+    const diff: DiffBudget[] = newBudget.map((item) => {
+      const current = budgetDistribution[item.category] || { amount: 0, percentage: 0 };
+      return {
+        category: item.category,
+        oldAmount: current.amount,
+        newAmount: item.amount,
+        deltaAmount: item.amount - current.amount,
+        oldPercentage: current.percentage,
+        newPercentage: item.percentage,
+        deltaPercentage: item.percentage - current.percentage,
+      };
+    });
+    setPendingBudgetDiff(diff);
+    setShowConfirmModal(true);
+  };
+
+  const confirmUpdate = () => {
+    if (pendingBudgetDiff) {
+      // Create updated distribution from the diff info
+      const updatedDistribution = pendingBudgetDiff.reduce((acc, item) => {
+        acc[item.category] = {
+          amount: item.newAmount,
+          percentage: item.newPercentage,
+        };
+        return acc;
+      }, {} as Record<string, { amount: number; percentage: number }>);
+      setBudgetDistribution(updatedDistribution);
+      setShowConfirmModal(false);
+      setPendingBudgetDiff(null);
+    }
+  };
+
+  const cancelUpdate = () => {
+    setShowConfirmModal(false);
+    setPendingBudgetDiff(null);
   };
 
   const [showInvestmentModal, setShowInvestmentModal] = useState(false);
@@ -495,6 +526,13 @@ export default function BudgetManagement() {
         isOpen={showInvestmentModal}
         onClose={() => setShowInvestmentModal(false)}
         amount={selectedInvestmentAmount}
+      />
+      
+      <ConfirmChangesModal
+        isOpen={showConfirmModal}
+        changes={pendingBudgetDiff || []}
+        onConfirm={confirmUpdate}
+        onCancel={cancelUpdate}
       />
     </div>
   );
