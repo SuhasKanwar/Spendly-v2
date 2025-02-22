@@ -10,6 +10,7 @@ const menuItems = [
   { icon: Bitcoin, label: "Crypto Wallet", href: "/dashboard/crypto" },
   { icon: Home, label: "Goals", href: "/dashboard/goals" },
   { icon: Calculator, label: "FD Planner", href: "/dashboard/planner" },
+  {icon: Calculator, label: "Reactive Transactions", href: "/dashboard/reactive"}
 ]
 
 export function Sidebar() {
