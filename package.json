@@ -28,6 +28,7 @@
     "fs": "^0.0.1-security",
     "groq": "^3.74.1",
     "groq-sdk": "^0.15.0",
+    "hardhat": "^2.22.18",
     "input-otp": "^1.4.2",
     "lenis": "^1.1.20",
     "lucide-react": "^0.474.0",
