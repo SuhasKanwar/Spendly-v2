@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import "../../lib/reactive-lib/src/abstract-base/AbstractReactive.sol";
+import "../../lib/hackathon/src/AbstractReactive.sol";
 
 /**
  * @title ReactiveVolatilityTrigger
