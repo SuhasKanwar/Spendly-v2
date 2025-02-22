@@ -466,7 +466,6 @@ export default function BudgetManagement() {
 
   const confirmUpdate = () => {
     if (pendingBudgetDiff) {
-      // Create updated distribution from the diff info
       const updatedDistribution = pendingBudgetDiff.reduce((acc, item) => {
         acc[item.category] = {
           amount: item.newAmount,

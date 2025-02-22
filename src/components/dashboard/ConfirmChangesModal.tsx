@@ -31,16 +31,21 @@ const ConfirmChangesModal: React.FC<ConfirmChangesModalProps> = ({
         <h2 className="text-xl font-semibold mb-4">Confirm Budget Update</h2>
         <div className="max-h-64 overflow-auto mb-4">
           <ul>
-            {changes.map((item, idx) => (
-              <li key={idx} className="mb-2 text-sm">
-                <strong>{item.category}:</strong><br />
-                Old: ₹{item.oldAmount.toLocaleString()} ({item.oldPercentage.toFixed(1)}%)<br />
-                New: ₹{item.newAmount.toLocaleString()} ({item.newPercentage.toFixed(1)}%)<br />
-                Change: {item.deltaAmount >= 0 ? "+" : ""}
-                ₹{item.deltaAmount.toLocaleString()} ({item.deltaPercentage >= 0 ? "+" : ""}
-                {item.deltaPercentage.toFixed(1)}%)
-              </li>
-            ))}
+            {changes.map((item, idx) =>
+              item.deltaAmount !== 0 && (
+                <li key={idx} className="mb-2 text-sm">
+                  <strong>{item.category}:</strong>
+                  <br />
+                  Old: ₹{item.oldAmount.toLocaleString()} ({item.oldPercentage.toFixed(1)}%)
+                  <br />
+                  New: ₹{item.newAmount.toLocaleString()} ({item.newPercentage.toFixed(1)}%)
+                  <br />
+                  Change: {item.deltaAmount >= 0 ? "+" : ""}
+                  ₹{item.deltaAmount.toLocaleString()} ({item.deltaPercentage >= 0 ? "+" : ""}
+                  {item.deltaPercentage.toFixed(1)}%)
+                </li>
+              )
+            )}
           </ul>
         </div>
         <div className="flex justify-end gap-2">
