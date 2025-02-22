@@ -84,12 +84,16 @@ const BudgetCard = ({
   percentage,
   showAddAsGoal,
   onClick,
+  isImmutable,
+  toggleImmutable,
 }: {
   category: string;
   amount: number;
   percentage: number;
   showAddAsGoal?: boolean;
   onClick?: () => void;
+  isImmutable: boolean;
+  toggleImmutable: () => void;
 }) => {
   const router = useRouter();
   const isInvestments = category === "Investments";
@@ -146,6 +150,13 @@ const BudgetCard = ({
           )}
         </CardContent>
       </Card>
+      <Button
+        variant="outline"
+        className={`mt-2 w-full ${isImmutable ? "bg-secondary text-white" : ""}`}
+        onClick={toggleImmutable}
+      >
+        Don't Change
+      </Button>
       {isInvestments && (
         <motion.div
           initial={{ opacity: 0, y: 10 }}
@@ -163,9 +174,11 @@ const BudgetCard = ({
 const Chatbox = ({
   budgetDistribution,
   onBudgetUpdate,
+  immutableCategories,
 }: {
   budgetDistribution: Record<string, { amount: number; percentage: number }>;
   onBudgetUpdate: (newBudget: BudgetItem[]) => void;
+  immutableCategories: string[];
 }) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
@@ -197,6 +210,7 @@ const Chatbox = ({
                 percentage: data.percentage,
               })
             ),
+            immutableCategories,
           }),
         });
 
@@ -447,7 +461,6 @@ export default function BudgetManagement() {
   const [showConfirmModal, setShowConfirmModal] = useState(false);
 
   const handleBudgetUpdate = (newBudget: BudgetItem[]) => {
-    // Calculate diff based on the current budgetDistribution values
     const diff: DiffBudget[] = newBudget.map((item) => {
       const current = budgetDistribution[item.category] || { amount: 0, percentage: 0 };
       return {
@@ -494,6 +507,16 @@ export default function BudgetManagement() {
     }
   };
 
+  const [immutableCategories, setImmutableCategories] = useState<string[]>([]);
+
+  const toggleImmutableCategory = (category: string) => {
+    setImmutableCategories((prev) =>
+      prev.includes(category)
+        ? prev.filter((c) => c !== category)
+        : [...prev, category]
+    );
+  };
+
   return (
     <div className="container mx-auto p-4 mt-12">
       <h1 className="text-3xl font-bold mb-6">Personal Budget Management</h1>
@@ -510,6 +533,8 @@ export default function BudgetManagement() {
               showAddAsGoal={!defaultCategories.includes(category)}
               //@ts-ignore
               onClick={() => handleCardClick(category, data.amount)}
+              isImmutable={immutableCategories.includes(category)}
+              toggleImmutable={() => toggleImmutableCategory(category)}
             />
           ))}
         </div>
@@ -517,6 +542,7 @@ export default function BudgetManagement() {
           <Chatbox
             budgetDistribution={budgetDistribution}
             onBudgetUpdate={handleBudgetUpdate}
+            immutableCategories={immutableCategories}
           />
         </div>
       </div>
