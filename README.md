@@ -2,6 +2,8 @@
 
 Spendly is a powerful financial management platform designed to help users track their investments, manage transactions, and receive personalized financial insights through AI-driven chatbots. Whether you invest in stocks, mutual funds, or cryptocurrencies, Spendly provides an intuitive, data-driven experience to optimize your financial decisions.
 
+https://github.com/user-attachments/assets/7d878c2e-f231-4015-b56f-bc55c0e3b7f1
+
 ## 🔄 Workflow
 
 1. **User Signup & Authentication:**
