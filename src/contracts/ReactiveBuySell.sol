@@ -1,53 +1,77 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import "../../lib/hackathon/src/AbstractReactive.sol";
-
-struct LogRecord {
-    uint256 dummy;
-}
+import "../../lib/reactive-lib/src/abstract-base/AbstractReactive.sol";
+import "../../lib/reactive-lib/src/interfaces/IReactive.sol";
 
 /**
  * @title ReactiveVolatilityTrigger
- * @dev A reactive-network contract that uses reactive-lib. It is triggered by an off-chain FAST API when crypto volatility exceeds 2%.
- * Upon triggering, the contract requires a call with exactly 0.01 ETH, which it then transfers to a static recipient address.
+ * @dev Listens for specific blockchain events and, upon detection, transfers 0.01 ETH to a designated recipient.
+ * It subscribes to events (such as significant crypto volatility) via an external reactive service.
  */
 contract ReactiveVolatilityTrigger is AbstractReactive {
-    // Static recipient address provided at deployment.
+    // Address to receive funds upon event trigger.
     address private immutable recipient;
-    
-    event TransferExecuted(address indexed from, address indexed to, uint256 amount);
-    
+
+    // Default recipient address if none is provided.
     address private constant DEFAULT_RECIPIENT = 0x53981d91E5E7039375FF74BD2d7652329fd4aB01;
 
+    // Event emitted after a successful transfer.
+    event TransferExecuted(address indexed from, address indexed to, uint256 amount);
+
     /**
-     * @dev Constructor that sets the static recipient.
-     * @param _recipient The address that will receive the 0.01 ETH transfers. If address(0) is passed, a default value is used.
+     * @dev Constructor to set the recipient address and attempt event subscription.
+     * @param _recipient The address designated to receive funds. If set to address(0), the default is used.
      */
     constructor(address _recipient) {
-        if (_recipient == address(0)) {
-            recipient = DEFAULT_RECIPIENT;
-        } else {
-            recipient = _recipient;
+        // Set the recipient address.
+        recipient = (_recipient == address(0)) ? DEFAULT_RECIPIENT : _recipient;
+
+        // Attempt to subscribe to events indicating significant crypto volatility.
+        // The call is wrapped in a try/catch block to prevent deployment failure
+        // if the external service (inherited as "service") is not available or rejects the parameters.
+        try service.subscribe(
+            block.chainid,       // Current chain ID
+            address(0),          // Address to monitor (to be specified)
+            uint256(0),          // Topic 0 (event signature hash, to be specified)
+            uint256(0),          // Topic 1 (optional)
+            uint256(0),          // Topic 2 (optional)
+            uint256(0)           // Topic 3 (optional)
+        ) {
+            // Subscription succeeded.
+        } catch {
+            // Subscription failed.
+            // You might add logging here or take alternative action if necessary.
         }
     }
-    
-    /**
-     * @notice React function called by the off-chain FAST API trigger when volatility is above threshold.
-     * The function requires an attached message value of exactly 0.01 ETH. On success, it transfers this amount to the static recipient.
-     * @param log A log record parameter from the reactive network trigger (its data is not used in this implementation).
+
+    /*
+     * @notice Callback function invoked when a subscribed event is detected.
+     * @param /log/ IReactive.LogRecord calldata The log record containing event data.
      */
-    function react(LogRecord calldata log) external payable {
-        // Ensure the caller sends exactly 0.01 ETH.
-        require(msg.value == 0.01 ether, "Must send exactly 0.01 ETH");
-        
-        // Transfer the ETH to the static recipient.
-        (bool sent, ) = recipient.call{value: msg.value}("");
-        require(sent, "Transfer failed");
-        
-        emit TransferExecuted(msg.sender, recipient, msg.value);
+    function react(IReactive.LogRecord calldata log) external override {
+        // Ensure only the authorized service can invoke this function.
+        require(msg.sender == address(service), "Unauthorized sender");
+
+        // Execute the payment logic upon event detection.
+        _initiatePayment();
     }
-    
-    // Fallback function to accept ETH if necessary.
-    // receive() external payable {}
+
+    /**
+     * @dev Internal function that handles payment logic by transferring 0.01 ETH.
+     */
+    function _initiatePayment() internal {
+        // Verify the contract holds at least 0.01 ETH.
+        require(address(this).balance >= 0.01 ether, "Insufficient balance");
+
+        // Transfer 0.01 ETH to the recipient.
+        (bool sent, ) = recipient.call{value: 0.01 ether}("");
+        require(sent, "Transfer failed");
+
+        // Emit an event on successful transfer.
+        emit TransferExecuted(address(this), recipient, 0.01 ether);
+    }
+
+    // Function to receive ETH into the contract.
+    receive() external payable override{}
 }
